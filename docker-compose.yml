@@ -1,0 +1,279 @@
+# =============================================================================
+# TLIA Marketing Stack - Docker Compose Configuration
+# =============================================================================
+# Domain: thatlittleidea.com
+# Services: Mautic, N8N, EspoCRM, YOURLS, Matomo, Metabase
+# =============================================================================
+
+version: '3.8'
+
+# =============================================================================
+# SERVICES
+# =============================================================================
+services:
+
+  # ---------------------------------------------------------------------------
+  # MAUTIC - Marketing Automation Platform
+  # Access: http://localhost:8080
+  # ---------------------------------------------------------------------------
+  mautic:
+    image: mautic/mautic:latest
+    container_name: tlia-mautic
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      - MAUTIC_DB_HOST=mautic-db
+      - MAUTIC_DB_NAME=mautic
+      - MAUTIC_DB_USER=mautic
+      - MAUTIC_DB_PASSWORD=${MAUTIC_DB_PASSWORD:-changeme}
+      - MAUTIC_RUN_CRON_JOBS=true
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - mautic-data:/var/www/html
+    depends_on:
+      - mautic-db
+    networks:
+      - tlia-network
+
+  mautic-db:
+    image: mysql:8.0
+    container_name: tlia-mautic-db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MAUTIC_DB_ROOT_PASSWORD:-changeme}
+      - MYSQL_DATABASE=mautic
+      - MYSQL_USER=mautic
+      - MYSQL_PASSWORD=${MAUTIC_DB_PASSWORD:-changeme}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - mautic-db-data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    networks:
+      - tlia-network
+
+  # ---------------------------------------------------------------------------
+  # N8N - Workflow Automation Tool
+  # Access: http://localhost:5678
+  # ---------------------------------------------------------------------------
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: tlia-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-changeme}
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - GENERIC_TIMEZONE=${TZ:-America/Chicago}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - n8n-data:/home/node/.n8n
+    networks:
+      - tlia-network
+
+  # ---------------------------------------------------------------------------
+  # ESPOCRM - Customer Relationship Management
+  # Access: http://localhost:8888
+  # ---------------------------------------------------------------------------
+  espocrm:
+    image: espocrm/espocrm:latest
+    container_name: tlia-espocrm
+    restart: unless-stopped
+    ports:
+      - "8888:80"
+    environment:
+      - ESPOCRM_DATABASE_HOST=espocrm-db
+      - ESPOCRM_DATABASE_NAME=espocrm
+      - ESPOCRM_DATABASE_USER=espocrm
+      - ESPOCRM_DATABASE_PASSWORD=${ESPOCRM_DB_PASSWORD:-changeme}
+      - ESPOCRM_ADMIN_USERNAME=${ESPOCRM_ADMIN_USER:-admin}
+      - ESPOCRM_ADMIN_PASSWORD=${ESPOCRM_ADMIN_PASSWORD:-changeme}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - espocrm-data:/var/www/html
+    depends_on:
+      - espocrm-db
+    networks:
+      - tlia-network
+
+  espocrm-db:
+    image: mysql:8.0
+    container_name: tlia-espocrm-db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${ESPOCRM_DB_ROOT_PASSWORD:-changeme}
+      - MYSQL_DATABASE=espocrm
+      - MYSQL_USER=espocrm
+      - MYSQL_PASSWORD=${ESPOCRM_DB_PASSWORD:-changeme}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - espocrm-db-data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    networks:
+      - tlia-network
+
+  # ---------------------------------------------------------------------------
+  # YOURLS - URL Shortener
+  # Access: http://localhost:8181
+  # ---------------------------------------------------------------------------
+  yourls:
+    image: yourls:latest
+    container_name: tlia-yourls
+    restart: unless-stopped
+    ports:
+      - "8181:80"
+    environment:
+      - YOURLS_DB_HOST=yourls-db
+      - YOURLS_DB_NAME=yourls
+      - YOURLS_DB_USER=yourls
+      - YOURLS_DB_PASS=${YOURLS_DB_PASSWORD:-changeme}
+      - YOURLS_SITE=http://localhost:8181
+      - YOURLS_USER=${YOURLS_USER:-admin}
+      - YOURLS_PASS=${YOURLS_PASSWORD:-changeme}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - yourls-data:/var/www/html
+    depends_on:
+      - yourls-db
+    networks:
+      - tlia-network
+
+  yourls-db:
+    image: mysql:8.0
+    container_name: tlia-yourls-db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${YOURLS_DB_ROOT_PASSWORD:-changeme}
+      - MYSQL_DATABASE=yourls
+      - MYSQL_USER=yourls
+      - MYSQL_PASSWORD=${YOURLS_DB_PASSWORD:-changeme}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - yourls-db-data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    networks:
+      - tlia-network
+
+  # ---------------------------------------------------------------------------
+  # MATOMO - Web Analytics (Google Analytics Alternative)
+  # Access: http://localhost:8282
+  # ---------------------------------------------------------------------------
+  matomo:
+    image: matomo:latest
+    container_name: tlia-matomo
+    restart: unless-stopped
+    ports:
+      - "8282:80"
+    environment:
+      - MATOMO_DATABASE_HOST=matomo-db
+      - MATOMO_DATABASE_DBNAME=matomo
+      - MATOMO_DATABASE_USERNAME=matomo
+      - MATOMO_DATABASE_PASSWORD=${MATOMO_DB_PASSWORD:-changeme}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - matomo-data:/var/www/html
+    depends_on:
+      - matomo-db
+    networks:
+      - tlia-network
+
+  matomo-db:
+    image: mysql:8.0
+    container_name: tlia-matomo-db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MATOMO_DB_ROOT_PASSWORD:-changeme}
+      - MYSQL_DATABASE=matomo
+      - MYSQL_USER=matomo
+      - MYSQL_PASSWORD=${MATOMO_DB_PASSWORD:-changeme}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - matomo-db-data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    networks:
+      - tlia-network
+
+  # ---------------------------------------------------------------------------
+  # METABASE - Business Intelligence & Dashboards
+  # Access: http://localhost:3000
+  # ---------------------------------------------------------------------------
+  metabase:
+    image: metabase/metabase:latest
+    container_name: tlia-metabase
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - MB_DB_TYPE=h2
+      - MB_DB_FILE=/metabase-data/metabase.db
+      - JAVA_TIMEZONE=${TZ:-America/Chicago}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - metabase-data:/metabase-data
+    networks:
+      - tlia-network
+
+  # ---------------------------------------------------------------------------
+  # PHPMYADMIN - Database Management (Development Only)
+  # Access: http://localhost:8090
+  # ---------------------------------------------------------------------------
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: tlia-phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    environment:
+      - PMA_ARBITRARY=1
+      - TZ=${TZ:-America/Chicago}
+    networks:
+      - tlia-network
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  tlia-network:
+    name: tlia-network
+    driver: bridge
+
+# =============================================================================
+# VOLUMES - Named volumes for data persistence
+# =============================================================================
+volumes:
+  # Mautic
+  mautic-data:
+    name: tlia-mautic-data
+  mautic-db-data:
+    name: tlia-mautic-db-data
+
+  # N8N
+  n8n-data:
+    name: tlia-n8n-data
+
+  # EspoCRM
+  espocrm-data:
+    name: tlia-espocrm-data
+  espocrm-db-data:
+    name: tlia-espocrm-db-data
+
+  # YOURLS
+  yourls-data:
+    name: tlia-yourls-data
+  yourls-db-data:
+    name: tlia-yourls-db-data
+
+  # Matomo
+  matomo-data:
+    name: tlia-matomo-data
+  matomo-db-data:
+    name: tlia-matomo-db-data
+
+  # Metabase
+  metabase-data:
+    name: tlia-metabase-data
