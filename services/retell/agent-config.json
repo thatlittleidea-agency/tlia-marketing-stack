@@ -103,10 +103,10 @@
   
   "webhooks": {
     "call_started": null,
-    "call_ended": "https://your-n8n.com/webhook/retell-call",
+    "call_ended": "https://n8n.thatlittleidea.com/webhook/retell-call",
     "call_analyzed": null,
-    "sms_received": "https://your-n8n.com/webhook/retell-sms",
-    "sms_conversation_ended": "https://your-n8n.com/webhook/retell-sms"
+    "sms_received": "https://n8n.thatlittleidea.com/webhook/retell-sms",
+    "sms_conversation_ended": "https://n8n.thatlittleidea.com/webhook/retell-sms"
   },
   
   "_comments": {

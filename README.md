@@ -10,10 +10,10 @@ This stack provides a comprehensive suite of open-source marketing and business 
 |---------|---------|-----------|---------------------|
 | **Mautic** | Marketing Automation | http://localhost:8080 | mautic.thatlittleidea.com |
 | **N8N** | Workflow Automation | http://localhost:5678 | n8n.thatlittleidea.com |
-| **EspoCRM** | Customer Relationship Management | http://localhost:8888 | crm.thatlittleidea.com |
+| **Dolibarr** | ERP/CRM Platform | http://localhost:8888 | crm.thatlittleidea.com |
 | **YOURLS** | URL Shortener & Analytics | http://localhost:8181 | links.thatlittleidea.com |
-| **Matomo** | Web Analytics (GA Alternative) | http://localhost:8282 | analytics.thatlittleidea.com |
 | **Metabase** | Business Intelligence & Reporting | http://localhost:3000 | bi.thatlittleidea.com |
+| **Asterisk** | AI Voice Agent (Twilio/OpenAI) | SIP:5060 | voice.thatlittleidea.com |
 | **phpMyAdmin** | Database Management (Dev Only) | http://localhost:8090 | - |
 
 ## Infrastructure
@@ -91,9 +91,8 @@ After running `docker-compose up -d`, access services at:
 |---------|-----|---------------------|
 | Mautic | http://localhost:8080 | Setup wizard on first run |
 | N8N | http://localhost:5678 | From .env (N8N_USER/N8N_PASSWORD) |
-| EspoCRM | http://localhost:8888 | From .env (ESPOCRM_ADMIN_*) |
+| Dolibarr | http://localhost:8888 | From .env (DOLIBARR_ADMIN_*) |
 | YOURLS | http://localhost:8181 | From .env (YOURLS_USER/YOURLS_PASSWORD) |
-| Matomo | http://localhost:8282 | Setup wizard on first run |
 | Metabase | http://localhost:3000 | Setup wizard on first run |
 | phpMyAdmin | http://localhost:8090 | root / DB root passwords |
 
@@ -109,12 +108,14 @@ tlia-marketing-stack/
 ├── TLIA_PROJECT_ROADMAP.md # Detailed project documentation
 ├── docs/                   # Additional documentation
 ├── services/               # Service-specific configurations
+│   ├── asterisk/           # Asterisk voice agent configs
+│   ├── retell/             # Retell AI agent configuration
 │   ├── mautic/
 │   ├── n8n/
-│   ├── espocrm/
 │   ├── yourls/
-│   ├── matomo/
 │   └── metabase/
+├── n8n/                    # N8N workflow definitions
+│   └── workflows/          # Retell voice/SMS webhook workflows
 ├── nginx/                  # Nginx reverse proxy configs
 │   ├── conf.d/
 │   └── ssl/

@@ -108,9 +108,9 @@ check_file() {
   fi
 }
 
-check_file "retell/system-prompt.md"
-check_file "retell/knowledge-base.md"
-check_file "retell/agent-config.json"
+check_file "services/retell/system-prompt.md"
+check_file "services/retell/knowledge-base.md"
+check_file "services/retell/agent-config.json"
 check_file "n8n/workflows/retell-voice-webhook.json"
 check_file "n8n/workflows/retell-sms-webhook.json"
 
