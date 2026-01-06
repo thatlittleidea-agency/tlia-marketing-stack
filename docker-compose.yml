@@ -2,7 +2,8 @@
 # TLIA Marketing Stack - Docker Compose Configuration (CHAS Stack)
 # =============================================================================
 # Domain: thatlittleidea.com
-# Services: Mautic, N8N, Dolibarr, YOURLS, Metabase, Asterisk AI Voice
+# Services: Mautic, N8N, Dolibarr, YOURLS, Metabase
+# Voice: Retell AI (external service via webhooks)
 # Optimized for 8GB RAM VPS
 # =============================================================================
 
@@ -198,35 +199,6 @@ services:
         limits:
           memory: 2048M
 
-  # ---------------------------------------------------------------------------
-  # ASTERISK - AI Voice Agent with OpenAI + Twilio Integration
-  # SIP: UDP 5060 | RTP: UDP 10000-10100
-  # ---------------------------------------------------------------------------
-  asterisk:
-    image: andrius/asterisk:latest
-    container_name: tlia-asterisk
-    restart: unless-stopped
-    ports:
-      - "5060:5060/udp"
-      - "5060:5060/tcp"
-      - "10000-10100:10000-10100/udp"
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
-      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
-      - TZ=${TZ:-America/Chicago}
-    volumes:
-      - ./services/asterisk/config/pjsip.conf:/etc/asterisk/pjsip.conf:ro
-      - ./services/asterisk/config/extensions.conf:/etc/asterisk/extensions.conf:ro
-      - asterisk-sounds:/var/lib/asterisk/sounds
-      - ./recordings:/recordings
-    networks:
-      - backend
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-
 # =============================================================================
 # NETWORKS
 # =============================================================================
@@ -266,8 +238,4 @@ volumes:
   # Metabase
   metabase-data:
     name: tlia-metabase-data
-
-  # Asterisk
-  asterisk-sounds:
-    name: tlia-asterisk-sounds
 

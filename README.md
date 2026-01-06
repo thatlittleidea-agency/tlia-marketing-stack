@@ -13,7 +13,7 @@ This stack provides a comprehensive suite of open-source marketing and business 
 | **Dolibarr** | ERP/CRM Platform | http://localhost:8888 | crm.thatlittleidea.com |
 | **YOURLS** | URL Shortener & Analytics | http://localhost:8181 | links.thatlittleidea.com |
 | **Metabase** | Business Intelligence & Reporting | http://localhost:3000 | bi.thatlittleidea.com |
-| **Asterisk** | AI Voice Agent (Twilio/OpenAI) | SIP:5060 | voice.thatlittleidea.com |
+| **Retell AI** | Voice/SMS AI Receptionist | External Service | via Twilio |
 | **phpMyAdmin** | Database Management (Dev Only) | http://localhost:8090 | - |
 
 ## Infrastructure
