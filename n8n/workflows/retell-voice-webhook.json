@@ -1,7 +1,5 @@
 {
   "name": "Retell Voice → Dolibarr",
-  "active": false,
-  "versionId": "1",
   "nodes": [
     {
       "parameters": {
@@ -403,23 +401,5 @@
   },
   "settings": {
     "executionOrder": "v1"
-  },
-  "staticData": null,
-  "tags": [
-    {
-      "name": "retell",
-      "createdAt": "2024-01-01T00:00:00.000Z",
-      "updatedAt": "2024-01-01T00:00:00.000Z"
-    },
-    {
-      "name": "dolibarr",
-      "createdAt": "2024-01-01T00:00:00.000Z",
-      "updatedAt": "2024-01-01T00:00:00.000Z"
-    },
-    {
-      "name": "voice",
-      "createdAt": "2024-01-01T00:00:00.000Z",
-      "updatedAt": "2024-01-01T00:00:00.000Z"
-    }
-  ]
+  }
 }
