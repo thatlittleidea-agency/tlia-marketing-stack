@@ -1,0 +1,425 @@
+{
+  "name": "Retell Voice → Dolibarr",
+  "active": false,
+  "versionId": "1",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "retell-call",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "id": "webhook-voice",
+      "name": "Webhook - Voice Call",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Retell webhook payload for voice calls\nconst payload = $input.first().json;\n\n// Call metadata\nconst callId = payload.call_id || payload.id || 'unknown';\nconst callDuration = payload.call_duration_seconds || payload.duration || 0;\nconst callerNumber = payload.from_number || payload.caller_number || '';\nconst transcript = payload.transcript || '';\nconst recordingUrl = payload.recording_url || null;\n\n// Extracted fields from post-call analysis\nconst extracted = payload.call_analysis?.extracted_fields || \n                  payload.extracted_fields || \n                  payload.analysis || {};\n\n// Calculate lead score\nlet leadScore = 0;\nlet scoreBreakdown = [];\n\nif (extracted.budget_range) {\n  leadScore += 30;\n  scoreBreakdown.push('budget: +30');\n}\nif (extracted.timeline) {\n  leadScore += 25;\n  scoreBreakdown.push('timeline: +25');\n}\nif (extracted.email) {\n  leadScore += 20;\n  scoreBreakdown.push('email: +20');\n}\nif (extracted.pain_points) {\n  leadScore += 15;\n  scoreBreakdown.push('pain_points: +15');\n}\nif (callDuration > 120) {\n  leadScore += 10;\n  scoreBreakdown.push('long_call: +10');\n}\nif (extracted.decision_maker === true) {\n  leadScore += 10;\n  scoreBreakdown.push('decision_maker: +10');\n}\n\n// Determine lead quality label\nlet leadQuality = 'cold';\nif (extracted.lead_quality) {\n  leadQuality = extracted.lead_quality;\n} else if (leadScore >= 70) {\n  leadQuality = 'hot';\n} else if (leadScore >= 40) {\n  leadQuality = 'warm';\n}\n\n// Clean phone number\nlet cleanPhone = callerNumber.replace(/\\D/g, '');\nif (cleanPhone.length === 10) {\n  cleanPhone = '1' + cleanPhone;\n}\nif (cleanPhone.length === 11 && cleanPhone.startsWith('1')) {\n  cleanPhone = '+' + cleanPhone;\n}\n\nreturn {\n  json: {\n    // Contact info\n    caller_name: extracted.caller_name || 'Unknown Caller',\n    company_name: extracted.company_name || '',\n    email: extracted.email || '',\n    phone: cleanPhone || callerNumber,\n    \n    // Lead info\n    service_interest: extracted.service_interest || '',\n    budget_range: extracted.budget_range || '',\n    timeline: extracted.timeline || '',\n    pain_points: extracted.pain_points || '',\n    next_steps: extracted.next_steps || '',\n    summary: extracted.summary || '',\n    \n    // Scoring\n    lead_score: leadScore,\n    lead_quality: leadQuality,\n    score_breakdown: scoreBreakdown.join(', '),\n    decision_maker: extracted.decision_maker || null,\n    \n    // Metadata\n    source: 'phone_call',\n    source_detail: 'retell_ai',\n    call_id: callId,\n    call_duration_seconds: callDuration,\n    call_duration_formatted: `${Math.floor(callDuration / 60)}m ${callDuration % 60}s`,\n    recording_url: recordingUrl,\n    transcript: transcript,\n    \n    // Timestamps\n    created_at: new Date().toISOString(),\n    call_date: new Date().toISOString().split('T')[0]\n  }\n};"
+      },
+      "id": "parse-voice",
+      "name": "Parse Voice Call Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.lead_quality }}",
+              "operation": "notEqual",
+              "value2": "spam"
+            }
+          ]
+        }
+      },
+      "id": "filter-spam",
+      "name": "Filter Spam",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.DOLIBARR_URL }}/api/index.php/thirdparties",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "sqlfilters",
+              "value": "(t.phone:like:'%{{ $json.phone.slice(-10) }}%')"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "check-existing",
+      "name": "Check Existing ThirdParty",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [850, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Dolibarr API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.length || 0 }}",
+              "operation": "equal",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "is-new-lead",
+      "name": "Is New Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DOLIBARR_URL }}/api/index.php/thirdparties",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "={{ $('Parse Voice Call Data').item.json.company_name || $('Parse Voice Call Data').item.json.caller_name }}"
+            },
+            {
+              "name": "name_alias",
+              "value": "={{ $('Parse Voice Call Data').item.json.caller_name }}"
+            },
+            {
+              "name": "client",
+              "value": "2"
+            },
+            {
+              "name": "prospect",
+              "value": "1"
+            },
+            {
+              "name": "phone",
+              "value": "={{ $('Parse Voice Call Data').item.json.phone }}"
+            },
+            {
+              "name": "email",
+              "value": "={{ $('Parse Voice Call Data').item.json.email }}"
+            },
+            {
+              "name": "note_private",
+              "value": "=== AI Lead Capture ===\nLead Score: {{ $('Parse Voice Call Data').item.json.lead_score }}/100 ({{ $('Parse Voice Call Data').item.json.lead_quality }})\nScore Breakdown: {{ $('Parse Voice Call Data').item.json.score_breakdown }}\n\nInterest: {{ $('Parse Voice Call Data').item.json.service_interest }}\nBudget: {{ $('Parse Voice Call Data').item.json.budget_range }}\nTimeline: {{ $('Parse Voice Call Data').item.json.timeline }}\nPain Points: {{ $('Parse Voice Call Data').item.json.pain_points }}\n\nSource: Phone Call\nCall Duration: {{ $('Parse Voice Call Data').item.json.call_duration_formatted }}\nCall ID: {{ $('Parse Voice Call Data').item.json.call_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-thirdparty",
+      "name": "Create ThirdParty",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1250, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Dolibarr API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get existing thirdparty ID\nconst existing = $('Check Existing ThirdParty').first().json;\nconst thirdpartyId = existing[0]?.id || existing.id;\n\nreturn {\n  json: {\n    id: thirdpartyId,\n    ...$('Parse Voice Call Data').first().json\n  }\n};"
+      },
+      "id": "get-existing-id",
+      "name": "Get Existing ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge paths - get thirdparty ID from either create or existing\nconst items = $input.all();\nconst parseData = $('Parse Voice Call Data').first().json;\n\nlet thirdpartyId;\n\n// Check if we created new or found existing\nif ($('Create ThirdParty').first()?.json?.id) {\n  thirdpartyId = $('Create ThirdParty').first().json.id;\n} else if ($('Get Existing ID').first()?.json?.id) {\n  thirdpartyId = $('Get Existing ID').first().json.id;\n} else {\n  thirdpartyId = items[0]?.json?.id;\n}\n\nreturn {\n  json: {\n    thirdparty_id: thirdpartyId,\n    ...parseData\n  }\n};"
+      },
+      "id": "merge-paths",
+      "name": "Merge Paths",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DOLIBARR_URL }}/api/index.php/projects",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "ref",
+              "value": "=LEAD-{{ $now.format('yyyyMMdd') }}-{{ $json.call_id.slice(-6) }}"
+            },
+            {
+              "name": "title",
+              "value": "={{ $json.lead_quality.toUpperCase() }}: {{ $json.caller_name }} - {{ $json.service_interest || 'General Inquiry' }}"
+            },
+            {
+              "name": "socid",
+              "value": "={{ $json.thirdparty_id }}"
+            },
+            {
+              "name": "description",
+              "value": "=LEAD SUMMARY\n{{ $json.summary }}\n\nDETAILS\n• Service Interest: {{ $json.service_interest || 'Not specified' }}\n• Budget: {{ $json.budget_range || 'Not discussed' }}\n• Timeline: {{ $json.timeline || 'Not specified' }}\n• Pain Points: {{ $json.pain_points || 'Not mentioned' }}\n• Next Steps: {{ $json.next_steps || 'Follow up required' }}\n\nCALL INFO\n• Duration: {{ $json.call_duration_formatted }}\n• Lead Score: {{ $json.lead_score }}/100\n• Recording: {{ $json.recording_url || 'N/A' }}\n\n─────────────────────────\nTRANSCRIPT\n─────────────────────────\n{{ $json.transcript }}"
+            },
+            {
+              "name": "opp_status",
+              "value": "1"
+            },
+            {
+              "name": "opp_percent",
+              "value": "={{ $json.lead_score }}"
+            },
+            {
+              "name": "usage_opportunity",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-opportunity",
+      "name": "Create Opportunity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1650, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Dolibarr API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DOLIBARR_URL }}/api/index.php/agendaevents",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type_code",
+              "value": "AC_TEL"
+            },
+            {
+              "name": "label",
+              "value": "=AI Call: {{ $('Parse Voice Call Data').first().json.caller_name }} ({{ $('Parse Voice Call Data').first().json.lead_quality }})"
+            },
+            {
+              "name": "socid",
+              "value": "={{ $('Merge Paths').first().json.thirdparty_id }}"
+            },
+            {
+              "name": "datep",
+              "value": "={{ $now.toSeconds() }}"
+            },
+            {
+              "name": "datef",
+              "value": "={{ $now.plus({ seconds: $('Parse Voice Call Data').first().json.call_duration_seconds }).toSeconds() }}"
+            },
+            {
+              "name": "note",
+              "value": "=Duration: {{ $('Parse Voice Call Data').first().json.call_duration_formatted }}\nLead Score: {{ $('Parse Voice Call Data').first().json.lead_score }}/100 ({{ $('Parse Voice Call Data').first().json.lead_quality }})\n\nSummary: {{ $('Parse Voice Call Data').first().json.summary }}\n\n{{ $('Parse Voice Call Data').first().json.transcript }}"
+            },
+            {
+              "name": "percentage",
+              "value": "100"
+            },
+            {
+              "name": "fulldayevent",
+              "value": "0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "log-activity",
+      "name": "Log Activity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1850, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Dolibarr API"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "end-spam",
+      "name": "End (Spam)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [850, 400]
+    }
+  ],
+  "connections": {
+    "Webhook - Voice Call": {
+      "main": [
+        [
+          {
+            "node": "Parse Voice Call Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Voice Call Data": {
+      "main": [
+        [
+          {
+            "node": "Filter Spam",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Spam": {
+      "main": [
+        [
+          {
+            "node": "Check Existing ThirdParty",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "End (Spam)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing ThirdParty": {
+      "main": [
+        [
+          {
+            "node": "Is New Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New Lead?": {
+      "main": [
+        [
+          {
+            "node": "Create ThirdParty",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Existing ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create ThirdParty": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing ID": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Paths": {
+      "main": [
+        [
+          {
+            "node": "Create Opportunity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Opportunity": {
+      "main": [
+        [
+          {
+            "node": "Log Activity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "retell",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "dolibarr",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "voice",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}

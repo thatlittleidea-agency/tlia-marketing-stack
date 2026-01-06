@@ -1,0 +1,433 @@
+{
+  "name": "Retell SMS → Dolibarr",
+  "active": false,
+  "versionId": "1",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "retell-sms",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "id": "webhook-sms",
+      "name": "Webhook - SMS",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Retell webhook payload for SMS conversations\nconst payload = $input.first().json;\n\n// Conversation metadata\nconst conversationId = payload.conversation_id || payload.id || 'unknown';\nconst phoneNumber = payload.from_number || payload.phone_number || '';\nconst messages = payload.messages || payload.conversation || [];\n\n// Get extracted data if conversation ended\nconst extracted = payload.extracted_fields || \n                  payload.analysis || \n                  payload.call_analysis?.extracted_fields || {};\n\n// Build conversation transcript\nlet transcript = '';\nif (Array.isArray(messages)) {\n  transcript = messages.map(m => {\n    const role = m.role === 'user' ? 'Customer' : 'AI';\n    const content = m.content || m.text || m.message || '';\n    return `${role}: ${content}`;\n  }).join('\\n');\n} else if (typeof messages === 'string') {\n  transcript = messages;\n}\n\n// Calculate lead score for SMS (typically lower weight than calls)\nlet leadScore = 0;\nlet scoreBreakdown = [];\n\nif (extracted.email) {\n  leadScore += 25;\n  scoreBreakdown.push('email: +25');\n}\nif (extracted.service_interest) {\n  leadScore += 20;\n  scoreBreakdown.push('interest: +20');\n}\nif (extracted.budget_range) {\n  leadScore += 20;\n  scoreBreakdown.push('budget: +20');\n}\nif (extracted.timeline) {\n  leadScore += 15;\n  scoreBreakdown.push('timeline: +15');\n}\n\nconst messageCount = Array.isArray(messages) ? messages.length : 0;\nif (messageCount > 6) {\n  leadScore += 15;\n  scoreBreakdown.push('engaged: +15');\n} else if (messageCount > 3) {\n  leadScore += 10;\n  scoreBreakdown.push('engaged: +10');\n}\n\n// Determine lead quality\nlet leadQuality = 'cold';\nif (extracted.lead_quality) {\n  leadQuality = extracted.lead_quality;\n} else if (leadScore >= 60) {\n  leadQuality = 'hot';\n} else if (leadScore >= 35) {\n  leadQuality = 'warm';\n}\n\n// Clean phone number\nlet cleanPhone = phoneNumber.replace(/\\D/g, '');\nif (cleanPhone.length === 10) {\n  cleanPhone = '1' + cleanPhone;\n}\nif (cleanPhone.length === 11 && cleanPhone.startsWith('1')) {\n  cleanPhone = '+' + cleanPhone;\n}\n\nreturn {\n  json: {\n    // Contact info\n    caller_name: extracted.caller_name || 'SMS Lead',\n    company_name: extracted.company_name || '',\n    email: extracted.email || '',\n    phone: cleanPhone || phoneNumber,\n    \n    // Lead info\n    service_interest: extracted.service_interest || '',\n    budget_range: extracted.budget_range || '',\n    timeline: extracted.timeline || '',\n    pain_points: extracted.pain_points || '',\n    summary: extracted.summary || '',\n    \n    // Scoring\n    lead_score: leadScore,\n    lead_quality: leadQuality,\n    score_breakdown: scoreBreakdown.join(', '),\n    \n    // Metadata\n    source: 'sms',\n    source_detail: 'retell_ai',\n    conversation_id: conversationId,\n    message_count: messageCount,\n    transcript: transcript,\n    \n    // Timestamps\n    created_at: new Date().toISOString(),\n    conversation_date: new Date().toISOString().split('T')[0]\n  }\n};"
+      },
+      "id": "parse-sms",
+      "name": "Parse SMS Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.lead_quality }}",
+              "operation": "notEqual",
+              "value2": "spam"
+            }
+          ],
+          "number": [
+            {
+              "value1": "={{ $json.message_count }}",
+              "operation": "larger",
+              "value2": 1
+            }
+          ]
+        },
+        "combineOperation": "all"
+      },
+      "id": "filter-spam-sms",
+      "name": "Filter Spam/Empty",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.DOLIBARR_URL }}/api/index.php/thirdparties",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "sqlfilters",
+              "value": "(t.phone:like:'%{{ $json.phone.slice(-10) }}%')"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "check-existing-sms",
+      "name": "Check Existing ThirdParty",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [850, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Dolibarr API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.length || 0 }}",
+              "operation": "equal",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "is-new-sms-lead",
+      "name": "Is New Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DOLIBARR_URL }}/api/index.php/thirdparties",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "={{ $('Parse SMS Data').item.json.company_name || $('Parse SMS Data').item.json.caller_name }}"
+            },
+            {
+              "name": "name_alias",
+              "value": "={{ $('Parse SMS Data').item.json.caller_name }}"
+            },
+            {
+              "name": "client",
+              "value": "2"
+            },
+            {
+              "name": "prospect",
+              "value": "1"
+            },
+            {
+              "name": "phone",
+              "value": "={{ $('Parse SMS Data').item.json.phone }}"
+            },
+            {
+              "name": "email",
+              "value": "={{ $('Parse SMS Data').item.json.email }}"
+            },
+            {
+              "name": "note_private",
+              "value": "=== AI Lead Capture (SMS) ===\nLead Score: {{ $('Parse SMS Data').item.json.lead_score }}/100 ({{ $('Parse SMS Data').item.json.lead_quality }})\nScore Breakdown: {{ $('Parse SMS Data').item.json.score_breakdown }}\n\nInterest: {{ $('Parse SMS Data').item.json.service_interest }}\nBudget: {{ $('Parse SMS Data').item.json.budget_range }}\nTimeline: {{ $('Parse SMS Data').item.json.timeline }}\n\nSource: SMS Conversation\nMessages: {{ $('Parse SMS Data').item.json.message_count }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-thirdparty-sms",
+      "name": "Create ThirdParty",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1250, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Dolibarr API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get existing thirdparty ID for SMS\nconst existing = $('Check Existing ThirdParty').first().json;\nconst thirdpartyId = existing[0]?.id || existing.id;\n\nreturn {\n  json: {\n    id: thirdpartyId,\n    ...$('Parse SMS Data').first().json\n  }\n};"
+      },
+      "id": "get-existing-id-sms",
+      "name": "Get Existing ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge paths for SMS - get thirdparty ID from either create or existing\nconst parseData = $('Parse SMS Data').first().json;\n\nlet thirdpartyId;\n\nif ($('Create ThirdParty').first()?.json?.id) {\n  thirdpartyId = $('Create ThirdParty').first().json.id;\n} else if ($('Get Existing ID').first()?.json?.id) {\n  thirdpartyId = $('Get Existing ID').first().json.id;\n}\n\nreturn {\n  json: {\n    thirdparty_id: thirdpartyId,\n    ...parseData\n  }\n};"
+      },
+      "id": "merge-paths-sms",
+      "name": "Merge Paths",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DOLIBARR_URL }}/api/index.php/projects",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "ref",
+              "value": "=SMS-{{ $now.format('yyyyMMdd') }}-{{ $json.conversation_id.slice(-6) }}"
+            },
+            {
+              "name": "title",
+              "value": "=SMS {{ $json.lead_quality.toUpperCase() }}: {{ $json.caller_name }} - {{ $json.service_interest || 'General Inquiry' }}"
+            },
+            {
+              "name": "socid",
+              "value": "={{ $json.thirdparty_id }}"
+            },
+            {
+              "name": "description",
+              "value": "=LEAD SUMMARY\n{{ $json.summary || 'SMS conversation - see transcript below' }}\n\nDETAILS\n• Service Interest: {{ $json.service_interest || 'Not specified' }}\n• Budget: {{ $json.budget_range || 'Not discussed' }}\n• Timeline: {{ $json.timeline || 'Not specified' }}\n\nCONVERSATION INFO\n• Messages exchanged: {{ $json.message_count }}\n• Lead Score: {{ $json.lead_score }}/100\n\n─────────────────────────\nSMS TRANSCRIPT\n─────────────────────────\n{{ $json.transcript }}"
+            },
+            {
+              "name": "opp_status",
+              "value": "1"
+            },
+            {
+              "name": "opp_percent",
+              "value": "={{ $json.lead_score }}"
+            },
+            {
+              "name": "usage_opportunity",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-opportunity-sms",
+      "name": "Create Opportunity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1650, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Dolibarr API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DOLIBARR_URL }}/api/index.php/agendaevents",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "type_code",
+              "value": "AC_OTH"
+            },
+            {
+              "name": "label",
+              "value": "=AI SMS: {{ $('Parse SMS Data').first().json.caller_name }} ({{ $('Parse SMS Data').first().json.message_count }} msgs)"
+            },
+            {
+              "name": "socid",
+              "value": "={{ $('Merge Paths').first().json.thirdparty_id }}"
+            },
+            {
+              "name": "datep",
+              "value": "={{ $now.toSeconds() }}"
+            },
+            {
+              "name": "datef",
+              "value": "={{ $now.toSeconds() }}"
+            },
+            {
+              "name": "note",
+              "value": "=SMS Conversation\nMessages: {{ $('Parse SMS Data').first().json.message_count }}\nLead Score: {{ $('Parse SMS Data').first().json.lead_score }}/100 ({{ $('Parse SMS Data').first().json.lead_quality }})\n\n{{ $('Parse SMS Data').first().json.transcript }}"
+            },
+            {
+              "name": "percentage",
+              "value": "100"
+            },
+            {
+              "name": "fulldayevent",
+              "value": "0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "log-activity-sms",
+      "name": "Log Activity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1850, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Dolibarr API"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "end-spam-sms",
+      "name": "End (Filtered)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [850, 400]
+    }
+  ],
+  "connections": {
+    "Webhook - SMS": {
+      "main": [
+        [
+          {
+            "node": "Parse SMS Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse SMS Data": {
+      "main": [
+        [
+          {
+            "node": "Filter Spam/Empty",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Spam/Empty": {
+      "main": [
+        [
+          {
+            "node": "Check Existing ThirdParty",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "End (Filtered)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing ThirdParty": {
+      "main": [
+        [
+          {
+            "node": "Is New Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New Lead?": {
+      "main": [
+        [
+          {
+            "node": "Create ThirdParty",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Existing ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create ThirdParty": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing ID": {
+      "main": [
+        [
+          {
+            "node": "Merge Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Paths": {
+      "main": [
+        [
+          {
+            "node": "Create Opportunity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Opportunity": {
+      "main": [
+        [
+          {
+            "node": "Log Activity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "retell",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "dolibarr",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "sms",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}

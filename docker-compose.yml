@@ -1,11 +1,10 @@
 # =============================================================================
-# TLIA Marketing Stack - Docker Compose Configuration
+# TLIA Marketing Stack - Docker Compose Configuration (CHAS Stack)
 # =============================================================================
 # Domain: thatlittleidea.com
-# Services: Mautic, N8N, EspoCRM, YOURLS, Matomo, Metabase
+# Services: Mautic, N8N, Dolibarr, YOURLS, Metabase, Asterisk AI Voice
+# Optimized for 8GB RAM VPS
 # =============================================================================
-
-version: '3.8'
 
 # =============================================================================
 # SERVICES
@@ -34,7 +33,7 @@ services:
     depends_on:
       - mautic-db
     networks:
-      - tlia-network
+      - backend
 
   mautic-db:
     image: mysql:8.0
@@ -50,7 +49,7 @@ services:
       - mautic-db-data:/var/lib/mysql
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     networks:
-      - tlia-network
+      - backend
 
   # ---------------------------------------------------------------------------
   # N8N - Workflow Automation Tool
@@ -73,49 +72,62 @@ services:
       - TZ=${TZ:-America/Chicago}
     volumes:
       - n8n-data:/home/node/.n8n
+      - ./recordings:/recordings
     networks:
-      - tlia-network
+      - backend
 
   # ---------------------------------------------------------------------------
-  # ESPOCRM - Customer Relationship Management
+  # DOLIBARR - ERP/CRM Platform (Replaces EspoCRM)
   # Access: http://localhost:8888
+  # Configured for USD / Texas / USA
   # ---------------------------------------------------------------------------
-  espocrm:
-    image: espocrm/espocrm:latest
-    container_name: tlia-espocrm
+  dolibarr:
+    image: dolibarr/dolibarr:latest
+    container_name: tlia-dolibarr
     restart: unless-stopped
     ports:
       - "8888:80"
     environment:
-      - ESPOCRM_DATABASE_HOST=espocrm-db
-      - ESPOCRM_DATABASE_NAME=espocrm
-      - ESPOCRM_DATABASE_USER=espocrm
-      - ESPOCRM_DATABASE_PASSWORD=${ESPOCRM_DB_PASSWORD:-changeme}
-      - ESPOCRM_ADMIN_USERNAME=${ESPOCRM_ADMIN_USER:-admin}
-      - ESPOCRM_ADMIN_PASSWORD=${ESPOCRM_ADMIN_PASSWORD:-changeme}
+      - DOLI_DB_HOST=dolibarr-db
+      - DOLI_DB_NAME=dolibarr
+      - DOLI_DB_USER=dolibarr
+      - DOLI_DB_PASSWORD=${DOLIBARR_DB_PASSWORD:-changeme}
+      - DOLI_ADMIN_LOGIN=${DOLIBARR_ADMIN_USER:-admin}
+      - DOLI_ADMIN_PASSWORD=${DOLIBARR_ADMIN_PASSWORD:-changeme}
+      - DOLI_INIT_LANG=en_US
+      - DOLI_INIT_CURRENCY=USD
+      - DOLI_INIT_COUNTRY=US
+      - DOLI_INIT_STATE=TX
       - TZ=${TZ:-America/Chicago}
     volumes:
-      - espocrm-data:/var/www/html
+      - dolibarr-data:/var/www/html/documents
+      - dolibarr-custom:/var/www/html/custom
     depends_on:
-      - espocrm-db
+      - dolibarr-db
     networks:
-      - tlia-network
+      backend:
+        aliases:
+          - tlia-dolibarr
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
-  espocrm-db:
-    image: mysql:8.0
-    container_name: tlia-espocrm-db
+  dolibarr-db:
+    image: mariadb:10.11
+    container_name: tlia-dolibarr-db
     restart: unless-stopped
     environment:
-      - MYSQL_ROOT_PASSWORD=${ESPOCRM_DB_ROOT_PASSWORD:-changeme}
-      - MYSQL_DATABASE=espocrm
-      - MYSQL_USER=espocrm
-      - MYSQL_PASSWORD=${ESPOCRM_DB_PASSWORD:-changeme}
+      - MYSQL_ROOT_PASSWORD=${DOLIBARR_DB_ROOT_PASSWORD:-changeme}
+      - MYSQL_DATABASE=dolibarr
+      - MYSQL_USER=dolibarr
+      - MYSQL_PASSWORD=${DOLIBARR_DB_PASSWORD:-changeme}
       - TZ=${TZ:-America/Chicago}
     volumes:
-      - espocrm-db-data:/var/lib/mysql
+      - dolibarr-db-data:/var/lib/mysql
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     networks:
-      - tlia-network
+      - backend
 
   # ---------------------------------------------------------------------------
   # YOURLS - URL Shortener
@@ -142,7 +154,7 @@ services:
     depends_on:
       - yourls-db
     networks:
-      - tlia-network
+      - backend
 
   yourls-db:
     image: mysql:8.0
@@ -158,50 +170,12 @@ services:
       - yourls-db-data:/var/lib/mysql
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     networks:
-      - tlia-network
-
-  # ---------------------------------------------------------------------------
-  # MATOMO - Web Analytics (Google Analytics Alternative)
-  # Access: http://localhost:8282
-  # ---------------------------------------------------------------------------
-  matomo:
-    image: matomo:latest
-    container_name: tlia-matomo
-    restart: unless-stopped
-    ports:
-      - "8282:80"
-    environment:
-      - MATOMO_DATABASE_HOST=matomo-db
-      - MATOMO_DATABASE_DBNAME=matomo
-      - MATOMO_DATABASE_USERNAME=matomo
-      - MATOMO_DATABASE_PASSWORD=${MATOMO_DB_PASSWORD:-changeme}
-      - TZ=${TZ:-America/Chicago}
-    volumes:
-      - matomo-data:/var/www/html
-    depends_on:
-      - matomo-db
-    networks:
-      - tlia-network
-
-  matomo-db:
-    image: mysql:8.0
-    container_name: tlia-matomo-db
-    restart: unless-stopped
-    environment:
-      - MYSQL_ROOT_PASSWORD=${MATOMO_DB_ROOT_PASSWORD:-changeme}
-      - MYSQL_DATABASE=matomo
-      - MYSQL_USER=matomo
-      - MYSQL_PASSWORD=${MATOMO_DB_PASSWORD:-changeme}
-      - TZ=${TZ:-America/Chicago}
-    volumes:
-      - matomo-db-data:/var/lib/mysql
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    networks:
-      - tlia-network
+      - backend
 
   # ---------------------------------------------------------------------------
   # METABASE - Business Intelligence & Dashboards
   # Access: http://localhost:3000
+  # Memory capped at 2048MB for 8GB VPS stability
   # ---------------------------------------------------------------------------
   metabase:
     image: metabase/metabase:latest
@@ -213,18 +187,52 @@ services:
       - MB_DB_TYPE=h2
       - MB_DB_FILE=/metabase-data/metabase.db
       - JAVA_TIMEZONE=${TZ:-America/Chicago}
+      - JAVA_OPTS=-Xmx1500m
       - TZ=${TZ:-America/Chicago}
     volumes:
       - metabase-data:/metabase-data
     networks:
-      - tlia-network
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+
+  # ---------------------------------------------------------------------------
+  # ASTERISK - AI Voice Agent with OpenAI + Twilio Integration
+  # SIP: UDP 5060 | RTP: UDP 10000-10100
+  # ---------------------------------------------------------------------------
+  asterisk:
+    image: andrius/asterisk:latest
+    container_name: tlia-asterisk
+    restart: unless-stopped
+    ports:
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "10000-10100:10000-10100/udp"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TZ=${TZ:-America/Chicago}
+    volumes:
+      - ./services/asterisk/config/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./services/asterisk/config/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - asterisk-sounds:/var/lib/asterisk/sounds
+      - ./recordings:/recordings
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
 # =============================================================================
 # NETWORKS
 # =============================================================================
 networks:
-  tlia-network:
-    name: tlia-network
+  backend:
+    name: backend
     driver: bridge
 
 # =============================================================================
@@ -241,11 +249,13 @@ volumes:
   n8n-data:
     name: tlia-n8n-data
 
-  # EspoCRM
-  espocrm-data:
-    name: tlia-espocrm-data
-  espocrm-db-data:
-    name: tlia-espocrm-db-data
+  # Dolibarr
+  dolibarr-data:
+    name: tlia-dolibarr-data
+  dolibarr-custom:
+    name: tlia-dolibarr-custom
+  dolibarr-db-data:
+    name: tlia-dolibarr-db-data
 
   # YOURLS
   yourls-data:
@@ -253,12 +263,11 @@ volumes:
   yourls-db-data:
     name: tlia-yourls-db-data
 
-  # Matomo
-  matomo-data:
-    name: tlia-matomo-data
-  matomo-db-data:
-    name: tlia-matomo-db-data
-
   # Metabase
   metabase-data:
     name: tlia-metabase-data
+
+  # Asterisk
+  asterisk-sounds:
+    name: tlia-asterisk-sounds
+

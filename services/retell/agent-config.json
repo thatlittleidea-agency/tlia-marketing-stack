@@ -1,0 +1,126 @@
+{
+  "agent_name": "Reception AI",
+  "description": "AI receptionist for lead qualification via phone and SMS",
+  
+  "voice_settings": {
+    "voice_id": "elevenlabs_rachel",
+    "voice_provider": "elevenlabs",
+    "stability": 0.7,
+    "similarity_boost": 0.8,
+    "speed": 1.0
+  },
+  
+  "llm_settings": {
+    "model": "claude-3-5-sonnet",
+    "temperature": 0.7,
+    "max_tokens": 150
+  },
+  
+  "conversation_settings": {
+    "interruption_sensitivity": 0.8,
+    "responsiveness": 0.9,
+    "enable_backchannel": true,
+    "backchannel_frequency": 0.6,
+    "backchannel_words": ["mhm", "I see", "got it", "okay"],
+    "ambient_sound": "off",
+    "end_call_after_silence_seconds": 30
+  },
+  
+  "post_call_analysis": {
+    "enabled": true,
+    "custom_analysis_prompt": "Extract the following from the conversation. Return null for any field not mentioned.",
+    "extract_fields": [
+      {
+        "name": "caller_name",
+        "type": "string",
+        "description": "The caller's full name"
+      },
+      {
+        "name": "company_name",
+        "type": "string",
+        "description": "The caller's company or business name"
+      },
+      {
+        "name": "email",
+        "type": "string",
+        "description": "Email address for follow-up"
+      },
+      {
+        "name": "phone_number",
+        "type": "string",
+        "description": "Phone number if different from caller ID"
+      },
+      {
+        "name": "service_interest",
+        "type": "string",
+        "description": "What service or help they're looking for"
+      },
+      {
+        "name": "budget_range",
+        "type": "string",
+        "description": "Their budget or budget range"
+      },
+      {
+        "name": "timeline",
+        "type": "string",
+        "description": "When they want to start or complete the project"
+      },
+      {
+        "name": "pain_points",
+        "type": "string",
+        "description": "Problems or challenges they mentioned"
+      },
+      {
+        "name": "decision_maker",
+        "type": "boolean",
+        "description": "Whether they indicated they're the decision maker"
+      },
+      {
+        "name": "lead_quality",
+        "type": "string",
+        "enum": ["hot", "warm", "cold", "spam"],
+        "description": "Overall assessment of lead quality"
+      },
+      {
+        "name": "next_steps",
+        "type": "string",
+        "description": "What was agreed as the next step"
+      },
+      {
+        "name": "summary",
+        "type": "string",
+        "description": "Brief 1-2 sentence summary of the call"
+      }
+    ]
+  },
+  
+  "sms_settings": {
+    "enabled": true,
+    "auto_respond": true,
+    "max_message_length": 160,
+    "conversation_timeout_minutes": 60
+  },
+  
+  "webhooks": {
+    "call_started": null,
+    "call_ended": "https://your-n8n.com/webhook/retell-call",
+    "call_analyzed": null,
+    "sms_received": "https://your-n8n.com/webhook/retell-sms",
+    "sms_conversation_ended": "https://your-n8n.com/webhook/retell-sms"
+  },
+  
+  "_comments": {
+    "voice_id_options": [
+      "elevenlabs_rachel - warm, friendly female",
+      "elevenlabs_josh - professional male",
+      "elevenlabs_bella - conversational female",
+      "openai_alloy - neutral",
+      "openai_nova - bright female"
+    ],
+    "llm_options": [
+      "claude-3-5-sonnet - recommended, best quality",
+      "gpt-4o - alternative",
+      "gpt-4o-mini - cheaper but less nuanced"
+    ]
+  }
+}
