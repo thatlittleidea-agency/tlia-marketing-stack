@@ -13,7 +13,7 @@ This stack provides a comprehensive suite of open-source marketing and business 
 | **Dolibarr** | ERP/CRM Platform | http://localhost:8888 | crm.thatlittleidea.com |
 | **YOURLS** | URL Shortener & Analytics | http://localhost:8181 | links.thatlittleidea.com |
 | **Metabase** | Business Intelligence & Reporting | http://localhost:3000 | bi.thatlittleidea.com |
-| **Plane** | Project Management (Jira Alt) | http://localhost:8282 | plano.thatlittleidea.com |
+| **Plane** | Project Management (Jira Alt) | http://localhost:8282 | plane.thatlittleidea.com |
 | **Retell AI** | Voice/SMS AI Receptionist | External Service | via Twilio |
 | **phpMyAdmin** | Database Management (Dev Only) | http://localhost:8090 | - |
 
