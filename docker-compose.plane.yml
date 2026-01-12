@@ -1,0 +1,283 @@
+# =============================================================================
+# TLIA Marketing Stack - Plane Project Management
+# =============================================================================
+# Domain: plano.thatlittleidea.com
+# Plane.so - Open Source Project Management (Jira/Linear Alternative)
+#
+# IMPORTANT: Plane requires significant resources (4GB+ RAM recommended)
+# Run separately from main stack: docker compose -f docker-compose.plane.yml up -d
+# =============================================================================
+
+x-api-env: &api-env
+  DEBUG: ${PLANE_DEBUG:-0}
+  WEB_URL: ${PLANE_WEB_URL:-https://plano.thatlittleidea.com}
+  CORS_ALLOWED_ORIGINS: ${PLANE_WEB_URL:-https://plano.thatlittleidea.com}
+  SENTRY_DSN: ""
+  SENTRY_ENVIRONMENT: production
+  SECRET_KEY: ${PLANE_SECRET_KEY:-tACFJhiHmv5HUksIeznn1Rbm8lGz5Anv}
+  DATABASE_URL: postgresql://plane:${PLANE_DB_PASSWORD:-7g2CPcmSHzzlpFVL9i2QrfRI}@plane-db:5432/plane
+  REDIS_URL: redis://plane-redis:6379/
+  AMQP_URL: amqp://plane:${PLANE_MQ_PASSWORD:-i0XVkWG8r2jqHDNTUNeOo7J4}@plane-mq:5672/
+  USE_MINIO: 1
+  MINIO_ENDPOINT_SSL: 0
+  AWS_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: ${PLANE_MINIO_ROOT_USER:-PO8EcTcRyOGL3ZRj}
+  AWS_SECRET_ACCESS_KEY: ${PLANE_MINIO_ROOT_PASSWORD:-iH5FNCtU74HtFFBqsCYwCgA0cOU3mMxJ}
+  AWS_S3_ENDPOINT_URL: http://plane-minio:9000
+  AWS_S3_BUCKET_NAME: uploads
+  FILE_SIZE_LIMIT: 5242880
+  GUNICORN_WORKERS: 2
+  API_KEY_RATE_LIMIT: 60
+  ENABLE_SIGNUP: ${PLANE_ENABLE_SIGNUP:-1}
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PLANE DATABASE - PostgreSQL
+  # ---------------------------------------------------------------------------
+  plane-db:
+    image: postgres:15.7-alpine
+    container_name: tlia-plane-db
+    restart: unless-stopped
+    command: postgres -c 'max_connections=1000'
+    environment:
+      POSTGRES_USER: plane
+      POSTGRES_PASSWORD: ${PLANE_DB_PASSWORD:-7g2CPcmSHzzlpFVL9i2QrfRI}
+      POSTGRES_DB: plane
+      PGDATA: /var/lib/postgresql/data
+      TZ: ${TZ:-America/Chicago}
+    volumes:
+      - plane-db-data:/var/lib/postgresql/data
+    networks:
+      - plane-network
+
+  # ---------------------------------------------------------------------------
+  # PLANE CACHE - Redis (Valkey)
+  # ---------------------------------------------------------------------------
+  plane-redis:
+    image: valkey/valkey:7.2.11-alpine
+    container_name: tlia-plane-redis
+    restart: unless-stopped
+    volumes:
+      - plane-redis-data:/data
+    networks:
+      - plane-network
+
+  # ---------------------------------------------------------------------------
+  # PLANE MESSAGE QUEUE - RabbitMQ
+  # ---------------------------------------------------------------------------
+  plane-mq:
+    image: rabbitmq:3.13.6-management-alpine
+    container_name: tlia-plane-mq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: plane
+      RABBITMQ_DEFAULT_PASS: ${PLANE_MQ_PASSWORD:-i0XVkWG8r2jqHDNTUNeOo7J4}
+    volumes:
+      - plane-mq-data:/var/lib/rabbitmq
+    networks:
+      - plane-network
+
+  # ---------------------------------------------------------------------------
+  # PLANE STORAGE - MinIO
+  # ---------------------------------------------------------------------------
+  plane-minio:
+    image: minio/minio:latest
+    container_name: tlia-plane-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9090"
+    environment:
+      MINIO_ROOT_USER: ${PLANE_MINIO_ROOT_USER:-PO8EcTcRyOGL3ZRj}
+      MINIO_ROOT_PASSWORD: ${PLANE_MINIO_ROOT_PASSWORD:-iH5FNCtU74HtFFBqsCYwCgA0cOU3mMxJ}
+    volumes:
+      - plane-minio-data:/data
+    networks:
+      - plane-network
+
+  # ---------------------------------------------------------------------------
+  # PLANE MIGRATOR - Database Migrations (runs once)
+  # ---------------------------------------------------------------------------
+  plane-migrator:
+    image: artifacts.plane.so/makeplane/plane-backend:stable
+    container_name: tlia-plane-migrator
+    restart: "no"
+    command: ./bin/docker-entrypoint-migrator.sh
+    environment:
+      <<: *api-env
+    depends_on:
+      - plane-db
+      - plane-redis
+    networks:
+      - plane-network
+
+  # ---------------------------------------------------------------------------
+  # PLANE API - Backend API Server
+  # ---------------------------------------------------------------------------
+  plane-api:
+    image: artifacts.plane.so/makeplane/plane-backend:stable
+    container_name: tlia-plane-api
+    restart: unless-stopped
+    command: ./bin/docker-entrypoint-api.sh
+    environment:
+      <<: *api-env
+    depends_on:
+      - plane-db
+      - plane-redis
+      - plane-mq
+      - plane-migrator
+    networks:
+      - plane-network
+
+  # ---------------------------------------------------------------------------
+  # PLANE WORKER - Background Job Processor
+  # ---------------------------------------------------------------------------
+  plane-worker:
+    image: artifacts.plane.so/makeplane/plane-backend:stable
+    container_name: tlia-plane-worker
+    restart: unless-stopped
+    command: ./bin/docker-entrypoint-worker.sh
+    environment:
+      <<: *api-env
+    depends_on:
+      - plane-api
+      - plane-db
+      - plane-redis
+      - plane-mq
+    networks:
+      - plane-network
+
+  # ---------------------------------------------------------------------------
+  # PLANE BEAT WORKER - Scheduled Task Processor
+  # ---------------------------------------------------------------------------
+  plane-beat-worker:
+    image: artifacts.plane.so/makeplane/plane-backend:stable
+    container_name: tlia-plane-beat-worker
+    restart: unless-stopped
+    command: ./bin/docker-entrypoint-beat.sh
+    environment:
+      <<: *api-env
+    depends_on:
+      - plane-api
+      - plane-db
+      - plane-redis
+    networks:
+      - plane-network
+
+  # ---------------------------------------------------------------------------
+  # PLANE WEB - Main Web Application
+  # ---------------------------------------------------------------------------
+  plane-web:
+    image: artifacts.plane.so/makeplane/plane-frontend:stable
+    container_name: tlia-plane-web
+    restart: unless-stopped
+    command: node web/server.js web
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ""
+      NEXT_PUBLIC_ADMIN_BASE_URL: ""
+      NEXT_PUBLIC_ADMIN_BASE_PATH: /god-mode
+      NEXT_PUBLIC_SPACE_BASE_URL: ""
+      NEXT_PUBLIC_SPACE_BASE_PATH: /spaces
+      NEXT_PUBLIC_LIVE_BASE_URL: ""
+      NEXT_PUBLIC_LIVE_BASE_PATH: /live
+    depends_on:
+      - plane-api
+    networks:
+      - plane-network
+
+  # ---------------------------------------------------------------------------
+  # PLANE SPACE - Public Pages
+  # ---------------------------------------------------------------------------
+  plane-space:
+    image: artifacts.plane.so/makeplane/plane-frontend:stable
+    container_name: tlia-plane-space
+    restart: unless-stopped
+    command: node space/server.js space
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ""
+    depends_on:
+      - plane-api
+      - plane-web
+    networks:
+      - plane-network
+
+  # ---------------------------------------------------------------------------
+  # PLANE ADMIN - Admin Dashboard
+  # ---------------------------------------------------------------------------
+  plane-admin:
+    image: artifacts.plane.so/makeplane/plane-frontend:stable
+    container_name: tlia-plane-admin
+    restart: unless-stopped
+    command: node admin/server.js admin
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ""
+    depends_on:
+      - plane-api
+      - plane-web
+    networks:
+      - plane-network
+
+  # ---------------------------------------------------------------------------
+  # PLANE LIVE - Real-time Collaboration
+  # ---------------------------------------------------------------------------
+  plane-live:
+    image: artifacts.plane.so/makeplane/plane-live:stable
+    container_name: tlia-plane-live
+    restart: unless-stopped
+    command: node live/dist/server.js live
+    environment:
+      API_BASE_URL: http://plane-api:8000
+    depends_on:
+      - plane-api
+      - plane-redis
+    networks:
+      - plane-network
+
+  # ---------------------------------------------------------------------------
+  # PLANE PROXY - Nginx Reverse Proxy
+  # Access: http://localhost:8282
+  # Production: plano.thatlittleidea.com
+  # ---------------------------------------------------------------------------
+  plane-proxy:
+    image: artifacts.plane.so/makeplane/plane-proxy:stable
+    container_name: tlia-plane-proxy
+    restart: unless-stopped
+    ports:
+      - "8282:80"
+    environment:
+      NGINX_PORT: 80
+      WEB_URL: ${PLANE_WEB_URL:-https://plano.thatlittleidea.com}
+      FILE_SIZE_LIMIT: 5242880
+      BUCKET_NAME: uploads
+    depends_on:
+      - plane-web
+      - plane-api
+      - plane-space
+      - plane-admin
+      - plane-live
+    networks:
+      - plane-network
+      - backend
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  plane-network:
+    name: plane-network
+    driver: bridge
+  backend:
+    external: true
+    name: backend
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  plane-db-data:
+    name: tlia-plane-db-data
+  plane-redis-data:
+    name: tlia-plane-redis-data
+  plane-mq-data:
+    name: tlia-plane-mq-data
+  plane-minio-data:
+    name: tlia-plane-minio-data

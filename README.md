@@ -13,6 +13,7 @@ This stack provides a comprehensive suite of open-source marketing and business 
 | **Dolibarr** | ERP/CRM Platform | http://localhost:8888 | crm.thatlittleidea.com |
 | **YOURLS** | URL Shortener & Analytics | http://localhost:8181 | links.thatlittleidea.com |
 | **Metabase** | Business Intelligence & Reporting | http://localhost:3000 | bi.thatlittleidea.com |
+| **Plane** | Project Management (Jira Alt) | http://localhost:8282 | plano.thatlittleidea.com |
 | **Retell AI** | Voice/SMS AI Receptionist | External Service | via Twilio |
 | **phpMyAdmin** | Database Management (Dev Only) | http://localhost:8090 | - |
 
@@ -64,6 +65,9 @@ This stack provides a comprehensive suite of open-source marketing and business 
 # Start all services in background
 docker-compose up -d
 
+# Start Plane (separate stack - requires 4GB+ RAM)
+docker-compose -f docker-compose.plane.yml up -d
+
 # Stop all services
 docker-compose down
 
@@ -94,22 +98,23 @@ After running `docker-compose up -d`, access services at:
 | Dolibarr | http://localhost:8888 | From .env (DOLIBARR_ADMIN_*) |
 | YOURLS | http://localhost:8181 | From .env (YOURLS_USER/YOURLS_PASSWORD) |
 | Metabase | http://localhost:3000 | Setup wizard on first run |
+| Plane | http://localhost:8282 | Setup wizard on first run |
 | phpMyAdmin | http://localhost:8090 | root / DB root passwords |
 
 ## Project Structure
 
 ```
 tlia-marketing-stack/
-├── docker-compose.yml      # Main Docker configuration
-├── .env                    # Environment variables (git-ignored)
-├── .env.example            # Template for environment variables
-├── .gitignore              # Git ignore rules
-├── README.md               # This file
-├── TLIA_PROJECT_ROADMAP.md # Detailed project documentation
-├── docs/                   # Additional documentation
-├── services/               # Service-specific configurations
-│   ├── asterisk/           # Asterisk voice agent configs
-│   ├── retell/             # Retell AI agent configuration
+├── docker-compose.yml       # Main Docker configuration
+├── docker-compose.plane.yml # Plane project management (separate stack)
+├── .env                     # Environment variables (git-ignored)
+├── .env.example             # Template for environment variables
+├── .gitignore               # Git ignore rules
+├── README.md                # This file
+├── TLIA_PROJECT_ROADMAP.md  # Detailed project documentation
+├── docs/                    # Additional documentation
+├── services/                # Service-specific configurations
+│   ├── retell/              # Retell AI agent configuration
 │   ├── mautic/
 │   ├── n8n/
 │   ├── yourls/

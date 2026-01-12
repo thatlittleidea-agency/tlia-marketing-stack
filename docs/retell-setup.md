@@ -277,55 +277,11 @@ A: [Your answer]
 
 ### 2.1 Connect Your Existing Twilio Number
 
-Since you already have Twilio SIP → Asterisk, you have options:
-
-**Option A: Direct Retell-Twilio Integration (Recommended for simplicity)**
-
 In Retell dashboard:
 1. Go to Phone Numbers → Import from Twilio
 2. Enter Twilio Account SID and Auth Token
 3. Select your existing number
 4. Retell handles the SIP connection
-
-**Option B: Keep Asterisk in the middle (if you need call routing logic)**
-
-```
-Twilio → Asterisk → Retell (via SIP)
-```
-
-Configure Asterisk dialplan to forward to Retell's SIP endpoint:
-
-```ini
-; /etc/asterisk/extensions.conf
-
-[from-twilio]
-extn => _X.,1,NoOp(Incoming call from Twilio)
- same => n,Set(CALLERID(name)=${CALLERID(num)})
- same => n,Dial(PJSIP/${EXTEN}@retell-trunk,60)
- same => n,Hangup()
-
-; PJSIP trunk config for Retell
-; /etc/asterisk/pjsip.conf
-[retell-trunk]
-type=endpoint
-transport=transport-udp
-context=from-retell
-disallow=all
-allow=ulaw
-allow=alaw
-outbound_auth=retell-auth
-aors=retell-aor
-
-[retell-aor]
-type=aor
-contact=sip:your-agent-id@sip.retellai.com
-
-[retell-auth]
-type=auth
-auth_type=userpass
-username=your-retell-sip-user
-password=your-retell-sip-pass
-```
 
 ### 2.2 SMS Setup
 
@@ -619,11 +575,6 @@ N8N_WEBHOOK_BASE_URL=https://your-n8n.com/webhook
 # Dolibarr
 DOLIBARR_URL=https://your-dolibarr.com
 DOLIBARR_API_KEY=your_dolibarr_api_key
-
-# Optional: Asterisk (if keeping in flow)
-ASTERISK_HOST=your_asterisk_ip
-ASTERISK_ARI_USER=ari_user
-ASTERISK_ARI_PASSWORD=ari_password
 ```
 
 ### 5.2 Git Ignore
